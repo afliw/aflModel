@@ -1,24 +1,6 @@
 <?php
-/*
-    Require the following defines to work:
-        define("CFG_DB_DRIVER", "mysql");
-        define("CFG_DB_HOST", "localhost");
-        define("CFG_DB_DBNAME", "name");
-        define("CFG_DB_CHARSET", "utf8");
-        define("CFG_DB_USER", "user");
-        define("CFG_DB_PASSWORD", 'password');
 
-    Usage:
-        'aflModel' class has only one static method, 'Create', that returns an object reflecting a model
-        of a determined table_name in the database. The object then can be altetered accesing its
-        properties (database fields) directly using a camel case representation of the field anme, for example, a field
-        in database "user_id" could be accessed or modified in the object model like this: '$obj->UserId'.
-
-        aflModel::Create("table_name");
-*/
-
-
-class Model {
+class aflModel {
     private $columns, $dbName, $tableName;
 
     function __construct($data){
@@ -36,7 +18,7 @@ class Model {
             if($column->IsForeignKey && get_class($column->ForeignObject) == $name)
                 return $column->ForeignObject;
         }
-		trigger_error("Mode > Unkown property '$name' in object/table '$this->tableName'");
+		trigger_error("aflModel > Unkown property '$name' in object/table '$this->tableName'");
 	}
 
     public function __set($name, $value){
@@ -80,7 +62,7 @@ class Model {
 		if($res && count($res) > 0)
 			return Util::CamelToSnakeCase($tableName);
 		else
-			trigger_error("ModelEx\getTableName > Table '$tableName' not found on database.");
+			trigger_error("aflModEx\getTableName > Table '$tableName' not found on database.");
 	}
 
     public function GetById($id){
@@ -113,7 +95,7 @@ class Model {
 
     public function Save(){
         if(!$this->checkNullables()){
-            trigger_error("Model\Insert > Trying to insert object with a null property in a non-nullable field.");
+            trigger_error("aflModel\Insert > Trying to insert object with a null property in a non-nullable field.");
             return false;
         }
 
@@ -125,7 +107,7 @@ class Model {
     }
 
     private function loadFromDataArray($data){
-        if(!Util::IsAssociativeArray($data)) trigger_error("Model\Load > Provided array is not an associative array.");
+        if(!Util::IsAssociativeArray($data)) trigger_error("aflModel\Load > Provided array is not an associative array.");
         foreach ($data as $key => $value) {
             foreach ($this->columns as $column) {
                 if($key === $column->Name || $key === $column->NameInDb) $column->Value = $value;
@@ -226,7 +208,7 @@ class Model {
     public static function Create($tableName, $data = null){
         $tableName = Util::SnakeToCamelCase($tableName);
 		if(!class_exists($tableName))
-			eval("class $tableName extends Model {}");
+			eval("class $tableName extends aflModel {}");
 		return new $tableName($data);
 	}
 }
@@ -263,7 +245,7 @@ class Column {
                   AND COLUMN_NAME = ?
                   AND REFERENCED_COLUMN_NAME IS NOT NULL";
         $res = SDB::EscRead($query, array($tableName, $tableSchema, $this->NameInDb));
-        $this->ForeignObject =  Model::Create($res[0]["REFERENCED_TABLE_NAME"]);
+        $this->ForeignObject =  aflModel::Create($res[0]["REFERENCED_TABLE_NAME"]);
     }
 
     function __toString(){
@@ -415,7 +397,7 @@ class DBO {
         if(!$result) return false;
 		$objArray = array();
 		foreach ($result as $key => $value) {
-			$objArray[$key] = Model::Create($this->table, $value);
+			$objArray[$key] = aflModel::Create($this->table, $value);
 		}
 		return $objArray;
 	}
