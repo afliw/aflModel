@@ -70,8 +70,8 @@ class aflModel {
     public function GetById($id){
         $primaryKeys = $this->getPKarray();
         if(count($primaryKeys) > 1 && (!is_array($id) || count($id) !== count($primaryKeys))){
-            trigger_error("aflModel\GetById > The number of elements provided in parameter on method is not the same as present primary keys on table." .
-                          "In case of have multiple primary keys, an array should be passed as paramter on method.");
+            return trigger_error("aflModel\GetById > The number of elements provided in parameter on method is not the same as present primary keys on table. " .
+                                 "In case of have multiple primary keys, an array should be passed as paramter on method.");
         }
         $pkArray = array_map(function($pk){
             return "$pk = ?";
