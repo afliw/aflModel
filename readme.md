@@ -1,7 +1,7 @@
 # What is it
 
-aflModel is a simple aproach to interact with a database into dynamically created model objects. 
-This model objects are created on runtime, there's no need to declare anything else beforehand.
+**aflModel** is a simple aproach to interact with a database using dynamically created model objects.
+This model objects are created on runtime through a class with minimal provided information, there's no need to declare anything else beforehand.
 
 It's a fast way to retrieve and modify data on a database without having to declare classes for each table on the database.
 
