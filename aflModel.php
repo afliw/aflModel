@@ -119,10 +119,14 @@ class aflModel {
         return true;
     }
 
-    public function GetAssosiativeArray($dbName = false){
+    public function GetAssociativeArray($dbName = false, $foreignObjects = false){
         $assArr = array();
         foreach ($this->columns as $column) {
             $assArr[$dbName ? $column->NameInDb : $column->Name] = $column->Value;
+            if($foreignObjects && $column->IsForeignKey){
+                $propName = get_class($column->ForeignObject);
+                $assArr[$propName] = $column->ForeignObject->GetAssociativeArray($dbName, true);
+            }
         }
         return $assArr;
     }
