@@ -90,8 +90,10 @@ class aflModel {
 
     private function loadFromDb($data){
         foreach ($this->columns as $column) {
-            if(array_key_exists($column->NameInDb, $data))
+            if(array_key_exists($column->NameInDb, $data)){
                 $column->Value = $data[$column->NameInDb];
+                if($column->IsForeignKey && $column->ForeignObject) $column->ForeignObject->GetById($column->Value);
+            }
         }
     }
 
