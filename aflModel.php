@@ -28,7 +28,7 @@ class aflModel {
 		    if($column->Name == $name){
                 if($column->Value === $value) return $value;
                 if($column->AutoIncrement) {
-                    trigger_error("aflModel\SetProperty > Cannot set value on property with autoincrement.");
+                    trigger_error("aflModel\SetProperty > Cannot set value on property with autoincrement");
                     return;
                 }
                 $column->Value = $value; // IDEA: podría verificar basandose en $column->DataType
@@ -75,7 +75,7 @@ class aflModel {
         $primaryKeys = $this->getPKarray();
         if(count($primaryKeys) > 1 && (!is_array($id) || count($id) !== count($primaryKeys))){
             return trigger_error("aflModel\GetById > The number of elements provided in parameter on method is not the same as present primary keys on table. " .
-                                 "In case of have multiple primary keys, an array should be passed as paramter on method.");
+                                 "In case of have multiple primary keys, an array should be passed as parameter on method");
         }
         $pkArray = array_map(function($pk){
             return "$pk = :$pk";
@@ -103,7 +103,7 @@ class aflModel {
 
     public function Save(){
         if(!$this->checkNullables()){
-            trigger_error("aflModel\Insert > Trying to insert or update an object with a null property in a non-nullable field.");
+            trigger_error("aflModel\Insert > Trying to insert or update an object with a null property in a non-nullable field");
             return false;
         }
 
@@ -120,7 +120,7 @@ class aflModel {
     }
 
     private function loadFromDataArray($data){
-        if(!Util::IsAssociativeArray($data)) trigger_error("aflModel\Load > Provided array is not an associative array.");
+        if(!Util::IsAssociativeArray($data)) trigger_error("aflModel\Load > Provided array is not an associative array");
         foreach ($data as $key => $value) {
             foreach ($this->columns as $column) {
                 if($key === $column->Name || $key === $column->NameInDb) $column->Value = $value;
@@ -284,7 +284,7 @@ class DBO {
 			$this->con = new PDO(CFG_DB_DRIVER.":host=".CFG_DB_HOST.";dbname=".CFG_DB_DBNAME.";charset=".CFG_DB_CHARSET, CFG_DB_USER, CFG_DB_PASSWORD);
 			$this->con->prepare("SET TEXTSIZE 9145728")->execute();
 		}catch(PDOException $e) {
-			echo "<h3 style='text-align:center;background-color:black;color:red;font-weight:bolder;border:1px solid black;'>{$e->getMessage()}</h3>";
+            die($e->getMessage());
 		}
 	}
 
