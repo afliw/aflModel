@@ -27,6 +27,10 @@ class aflModel {
         foreach ($this->columns as $column) {
 		    if($column->Name == $name){
                 if($column->Value === $value) return $value;
+                if($column->AutoIncrement) {
+                    trigger_error("aflModel\SetProperty > Cannot set value on property with autoincrement.");
+                    return;
+                }
                 $column->Value = $value; // IDEA: podría verificar basandose en $column->DataType
                 $column->HasChanged = true;
                 if($column->IsForeignKey && $column->ForeignObject)
@@ -34,7 +38,7 @@ class aflModel {
                 return $value;
             }
 		}
-        trigger_error("Mode > Unkown property '$name' in object/table '$this->tableName'");
+        trigger_error("aflModel\SetProperty > Unkown property '$name' in object/table '$this->tableName'");
 	}
 
     private function getTableProperties(){
@@ -99,8 +103,13 @@ class aflModel {
 
     public function Save(){
         if(!$this->checkNullables()){
-            trigger_error("aflModel\Insert > Trying to insert object with a null property in a non-nullable field.");
+            trigger_error("aflModel\Insert > Trying to insert or update an object with a null property in a non-nullable field.");
             return false;
+        }
+
+        foreach ($this->columns as $column) {
+            if($column->IsForeignKey && $column->ForeignObject)
+                $column->ForeignObject->Save();
         }
 
         foreach ($this->columns as $column) {
