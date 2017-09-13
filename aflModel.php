@@ -11,8 +11,10 @@ class aflModel {
     }
 
     public function __get($name){
+        $returnColumn = $name[0] == "_";
+        $name = $returnColumn ? substr($name, 1, strlen($name)) : $name;
 		foreach ($this->columns as $column) {
-		    if($column->Name == $name) return $column->Value;
+		    if($column->Name == $name) return $returnColumn ? $column : $column->Value;
 		}
         foreach ($this->columns as $column) {
             if($column->IsForeignKey && get_class($column->ForeignObject) == $name)
