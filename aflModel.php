@@ -74,12 +74,12 @@ class aflModel {
                                  "In case of have multiple primary keys, an array should be passed as paramter on method.");
         }
         $pkArray = array_map(function($pk){
-            return "$pk = ?";
-        }, $this->getPKarray());
+            return "$pk = :$pk";
+        }, $primaryKeys);
         $selectCondition = implode(" AND ", $pkArray);
         $queryColumns = implode(', ', $this->getColArray());
         $query = "SELECT $queryColumns FROM $this->tableName WHERE $selectCondition";
-        $id = is_array($id) ? $id : array($id);
+        $id = is_array($id) ? $id : array($primaryKeys[0] => $id);
         $res = SDB::EscRead($query, $id);
         if($res){
             $this->loadFromDb($res[0]);
