@@ -1,7 +1,7 @@
 <?php
 
 class aflModel {
-    private $columns, $dbName, $tableName;
+    private $columns, $dbName, $tableName, $tableType;
 
     function __construct($data){
         $this->tableName = $this->tableName ? $this->tableName : $this->getTableName();
@@ -59,14 +59,16 @@ class aflModel {
 
     protected function getTableName(){
         $tableName = get_class($this);
-		$query = "SELECT *
+		$query = "SELECT TABLE_TYPE
 				  FROM information_schema.`TABLES`
 				  WHERE table_schema = ?
 				  AND table_name = ?
 				  LIMIT 1";
 		$res = SDB::EscRead($query, array(CFG_DB_DBNAME, Util::CamelToSnakeCase($tableName)));
-		if($res && count($res) > 0)
-			return Util::CamelToSnakeCase($tableName);
+		if($res && count($res) > 0){
+            $this->tableType = $res[0]["TABLE_TYPE"];
+            return Util::CamelToSnakeCase($tableName);
+        }		
 		else
 			trigger_error("aflModEx\getTableName > Table '$tableName' not found on database.");
 	}
@@ -102,8 +104,12 @@ class aflModel {
     }
 
     public function Save(){
+        if($this->tableType !== "BASE TABLE"){
+            trigger_error("aflModel\Save > Table type '$this->tableType' cannot be saved ");
+            return false;
+        }
         if(!$this->checkNullables()){
-            trigger_error("aflModel\Insert > Trying to insert or update an object with a null property in a non-nullable field");
+            trigger_error("aflModel\Save\Insert > Trying to insert or update an object with a null property in a non-nullable field");
             return false;
         }
 
