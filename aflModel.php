@@ -583,7 +583,11 @@ class SDB{
 
 class Util {
     public static function CamelToSnakeCase($input){
-        $input = preg_replace("/([a-z 1-9])([A-Z])/", '$1_$2',$input);
+        $input = preg_replace_callback("/([a-z 1-9])([A-Z])/", function($match){
+            return $match[1] . "_" . strtolower($match[2]);
+        },$input);
+        if(preg_match("/([a-z 1-9])([A-Z])/", $input))
+            return self::CamelToSnakeCase($input);
         return strtolower($input);
     }
 
