@@ -1,12 +1,14 @@
 <?php
 
 class aflModel {
-    private $columns, $dbName, $tableName, $tableType;
+    private $columns, $dbName, $tableName, $tableType, $externalObjects;
 
-    function __construct($data){
+    function __construct($data, $bringReferences){
         $this->tableName = $this->tableName ? $this->tableName : $this->getTableName();
         $this->dbName = CFG_DB_DBNAME;
         $this->getTableProperties();
+        $this->externalObjects = array();
+        if($bringReferences) $this->getTableReferences();
         if(!is_null($data)) $this->loadFromDataArray($data);
     }
 
@@ -55,6 +57,24 @@ class aflModel {
             $tCol = new Column($columnProperties);
 			array_push($this->columns, $tCol);
 		}
+    }
+
+    protected function getTableReferences(){
+        $query = "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_TABLE_SCHEMA
+                  FROM information_schema.`KEY_COLUMN_USAGE`
+                  WHERE REFERENCED_TABLE_SCHEMA = ?
+                  AND REFERENCED_TABLE_NAME = ?";
+        $result = SDB::EscRead($query, array($this->dbName, $this->tableName));
+        foreach($result as $row){
+            $this->createReferenceObject($row);
+            foreach ($this->columns as $col) {
+                if($col->NameInDb == $row["REFERENCED_COLUMN_NAME"]) $col->HasReferences = true;
+            }
+        }
+    }
+
+    protected function createReferenceObject($referenceData){
+        array_push($this->externalObjects, new ExternalReference($referenceData));
     }
 
     protected function getTableName(){
@@ -134,6 +154,10 @@ class aflModel {
             }
         }
         return true;
+    }
+
+    public function SetData($dataArray){
+        return $this->loadFromDataArray($dataArray);
     }
 
     public function GetAssociativeArray($dbName = false, $foreignObjects = false){
@@ -228,16 +252,16 @@ class aflModel {
         }, $this->columns);
     }
 
-    public static function Create($tableName, $data = null){
+    public static function Create($tableName, $data = null, $bringReferences = false){
         $tableName = Util::SnakeToCamelCase($tableName);
 		if(!class_exists($tableName))
 			eval("class $tableName extends aflModel {}");
-		return new $tableName($data);
+		return new $tableName($data, $bringReferences);
     }
 }
 
 class Column {
-	public $Name, $IsForeignKey, $IsPrimaryKey, $Value, $HasChanged, $DataType, $IsNullable, $AutoIncrement, $NameInDb, $ForeignObject;
+	public $Name, $IsForeignKey, $HasReferences, $IsPrimaryKey, $Value, $HasChanged, $DataType, $IsNullable, $AutoIncrement, $NameInDb, $ForeignObject;
 
     function __construct($properties){
         $this->setProperties($properties);
@@ -251,6 +275,7 @@ class Column {
         $this->IsForeignKey = strpos($properties["COLUMN_KEY"], "MUL") !== FALSE;
         $this->IsPrimaryKey = strpos($properties["COLUMN_KEY"], "PRI") !== FALSE;
         $this->HasChanged = false;
+        $this->HasReferences = false;
         $this->DataType = $properties["DATA_TYPE"];
         $this->IsNullable = strpos($properties["IS_NULLABLE"], "YES") !== FALSE;
         $this->AutoIncrement = strpos($properties["EXTRA"], "auto_increment") !== FALSE;
@@ -273,6 +298,30 @@ class Column {
 
     function __toString(){
         return (string)$this->Value;
+    }
+}
+
+class ExternalReference {
+
+    public $ReferencedTable, $ReferencedColumn, $Objects, $Definition, $ColumnReference, $TableReference;
+    
+    function __construct($data){
+        $this->Definition = $this->getDefinition($data["TABLE_SCHEMA"], $data["TABLE_NAME"]);
+        $this->ReferencedTable = $data["REFERENCED_TABLE_NAME"];
+        $this->ReferencedColumn = $data["REFERENCED_COLUMN_NAME"];
+        $this->ColumnReference = $data["COLUMN_NAME"];
+        $this->TableReference = $data["TABLE_NAME"];
+    }
+    // TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_TABLE_SCHEMA
+    private function getDefinition($schema, $table){
+       return aflModel::Create($table);
+    }
+
+    public function New($dataArray = null){
+        $tempObj = clone $this->Definition;
+        array_push($this->Objects, $tempObj);
+        if($dataArray) $tempObj->SetData($dataArray);
+        return $tempObj;
     }
 }
 
