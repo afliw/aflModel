@@ -10,7 +10,7 @@ It's a fast way to retrieve and modify data on a database without having to decl
 * Create model objects on the fly gathering the required information from the database schema automatically.
 * Recursively get all related foreign objects, allowing to interact with them too.
 * Translates all database fields and tables name to a camelcase representation.
-* Get a table data and its relations' data into an object by it's primary key with a simple method.
+* Get a table data and its relations' data into an object by its primary key with a simple method.
 * Transform model object and its relations in a simple associative array.
 * Save all modified information in model object with a simple method.
 
