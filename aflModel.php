@@ -1,14 +1,17 @@
 <?php
 
+include_once "cfg/db.php";
+
 class aflModel {
-    private $columns, $dbName, $tableName, $tableType, $externalObjects;
+    private $columns, $dbName, $tableName, $tableType, $externalObjects, $bringReferences;
 
     function __construct($data, $bringReferences){
+        $this->bringReferences = $bringReferences;
         $this->tableName = $this->tableName ? $this->tableName : $this->getTableName();
         $this->dbName = CFG_DB_DBNAME;
         $this->getTableProperties();
         $this->externalObjects = array();
-        if($bringReferences) $this->getTableReferences();
+        if($this->bringReferences) $this->getTableReferences();
         if(!is_null($data)) $this->loadFromDataArray($data);
     }
 
@@ -35,7 +38,7 @@ class aflModel {
                 }
                 $column->Value = $value; // IDEA: podría verificar basandose en $column->DataType
                 $column->HasChanged = true;
-                if($column->IsForeignKey && $column->ForeignObject)
+                if($column->IsForeignKey && $column->ForeignObject && $this->bringReferences)
                     $column->ForeignObject->GetById($value);
                 return $value;
             }
@@ -78,7 +81,8 @@ class aflModel {
     }
 
     protected function getTableName(){
-        $tableName = get_class($this);
+        $tableName = explode("\\", get_class($this));
+        $tableName = $tableName[count($tableName) - 1];
 		$query = "SELECT TABLE_TYPE
 				  FROM information_schema.`TABLES`
 				  WHERE table_schema = ?
@@ -91,7 +95,23 @@ class aflModel {
         }		
 		else
 			trigger_error("aflModEx\getTableName > Table '$tableName' not found on database.");
-	}
+    }
+    
+    private function pkExists() {
+        $primaryKeys = $this->getPKarray();
+        $pkArray = array_map(function($pk){
+            return "$pk = :$pk";
+        }, $primaryKeys);
+        $selectCondition = implode(" AND ", $pkArray);
+        $query = "SELECT COUNT(*) as 'count' FROM $this->tableName WHERE $selectCondition";
+        $params = array();
+        foreach($this->columns as $column) {
+            if(!$column->IsPrimaryKey) continue;
+            $params[$column->NameInDb] = $column->Value;
+        }
+        $res = SDB::EscRead($query, $params);
+        return $res[0]["count"] > 0;
+    }
 
     public function GetById($id){
         $primaryKeys = $this->getPKarray();
@@ -129,18 +149,21 @@ class aflModel {
             return false;
         }
         if(!$this->checkNullables()){
-            trigger_error("aflModel\Save\Insert > Trying to insert or update an object with a null property in a non-nullable field");
+            trigger_error("aflModel\Save\Insert > Trying to insert or update an object with a null property in a non-nullable field on table '{$this->tableName}'");
             return false;
         }
 
-        foreach ($this->columns as $column) {
-            if($column->IsForeignKey && $column->ForeignObject)
-                $column->ForeignObject->Save();
+        if($this->bringReferences){
+            foreach ($this->columns as $column) {
+                if($column->IsForeignKey && $column->ForeignObject)
+                    $column->ForeignObject->Save();
+            }
         }
 
         foreach ($this->columns as $column) {
-            if($column->IsPrimaryKey && is_null($column->Value))
-                return $this->insertObject();
+            if(!$column->IsPrimaryKey) continue;
+            if(is_null($column->Value) && $column->AutoIncrement) return $this->insertObject();
+            if(!is_null($column->Value) && !$this->pkExists()) return $this->insertObject(); 
         }
         return $this->updateObject();
     }
@@ -149,18 +172,22 @@ class aflModel {
         if(!Util::IsAssociativeArray($data)) trigger_error("aflModel\Load > Provided array is not an associative array");
         foreach ($data as $key => $value) {
             foreach ($this->columns as $column) {
-                if($key === $column->Name || $key === $column->NameInDb) $column->Value = $value;
-                if($column->IsForeignKey && $column->ForeignObject) $column->ForeignObject->GetById($value);
+                if($key === $column->Name || $key === $column->NameInDb){
+                    $column->Value = $value;
+                    $column->HasChanged = true;
+                } 
+                if($column->IsForeignKey && $column->ForeignObject && $this->bringReferences) $column->ForeignObject->GetById($value);            
             }
         }
         return true;
     }
 
-    public function SetData($dataArray){
+    public function SetData($dataArray, $bringReferences = null){
+        $this->bringReferences = $bringReferences !== null ? $bringReferences : $this->bringReferences;
         return $this->loadFromDataArray($dataArray);
     }
 
-    public function GetAssociativeArray($dbName = false, $foreignObjects = false){
+    public function ToArray($dbName = false, $foreignObjects = false){
         $assArr = array();
         foreach ($this->columns as $column) {
             $assArr[$dbName ? $column->NameInDb : $column->Name] = $column->Value;
@@ -438,7 +465,7 @@ class DBO {
 		return $this;
 	}
 
-    public function Exec($fetchType = PDO::FETCH_ASSOC){
+    public function Exec($bringReferences = false){
         $query = $this->buildQuery();
         if(is_array($this->joins))
             foreach($this->joins as $join){
@@ -460,16 +487,16 @@ class DBO {
         		break;
         	case "SELECT":
         		//return $result ? $sth->fetchAll($fetchType) : false;
-				return $this->resultToModel($sth->fetchAll($fetchType));
+                return $this->resultToModel($sth->fetchAll(\PDO::FETCH_ASSOC), $bringReferences);
         		break;
         }
     }
 
-	private function resultToModel($result){
+	private function resultToModel($result, $bringReferences = false){
         if(!$result) return false;
 		$objArray = array();
 		foreach ($result as $key => $value) {
-			$objArray[$key] = aflModel::Create($this->table, $value);
+			$objArray[$key] = aflModel::Create($this->table, $value, $bringReferences);
 		}
 		return $objArray;
 	}
@@ -516,6 +543,8 @@ class DBO {
     }
 
     private function buildWhereClause($arrClause){
+        if($arrClause[1] == "is null" || $arrClause[1] == "is not null")
+            return $arrClause[0] . " " . $arrClause[1];
         $identifier = ":we".substr_count($this->where,":we");
         $whereClause = "{$arrClause[0]} {$arrClause[1]} {$identifier}{$arrClause[0]}";
         $this->values[$identifier.$arrClause[0]] = $arrClause[2];
