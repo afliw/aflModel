@@ -320,6 +320,7 @@ class Column {
                   AND COLUMN_NAME = ?
                   AND REFERENCED_COLUMN_NAME IS NOT NULL";
         $res = SDB::EscRead($query, array($tableName, $tableSchema, $this->NameInDb));
+        if(count($res) < 1) return $this->IsForeignKey = false;
         $this->ForeignObject =  aflModel::Create($res[0]["REFERENCED_TABLE_NAME"]);
     }
 
