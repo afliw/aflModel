@@ -378,7 +378,6 @@ class Cache {
 
     public static function Retrieve($params){
         $key = implode(".", $params);
-        if(isset(self::$store[$key])) echo "DB Cache Hit on '$key'" . PHP_EOL;
         return isset(self::$store[$key]) ? self::$store[$key] : false;
     }
 }
