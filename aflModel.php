@@ -1,7 +1,5 @@
 <?php
 
-include_once "cfg/db.php";
-
 class aflModel {
     private $columns, $dbName, $tableName, $tableType, $externalObjects, $bringReferences;
 
@@ -51,10 +49,14 @@ class aflModel {
     }
 
     private function getTableColumns(){
-        $query = "SELECT COLUMN_NAME, IS_NULLABLE, DATA_TYPE, EXTRA, COLUMN_KEY, TABLE_NAME, TABLE_SCHEMA
+        $res = Cache::Retrieve([$this->dbName, $this->tableName, "columns"]);
+        if(!$res) {
+            $query = "SELECT COLUMN_NAME, IS_NULLABLE, DATA_TYPE, EXTRA, COLUMN_KEY, TABLE_NAME, TABLE_SCHEMA
                   FROM information_schema.`COLUMNS`
 				  WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
-		$res = SDB::EscRead($query, array($this->dbName, $this->tableName));
+            $res = SDB::EscRead($query, array($this->dbName, $this->tableName));
+            Cache::Store([$this->dbName, $this->tableName, "columns"], $res);
+        } 
 		$this->columns = array();
 		foreach ($res as $columnProperties){
             $tCol = new Column($columnProperties);
@@ -63,12 +65,17 @@ class aflModel {
     }
 
     protected function getTableReferences(){
-        $query = "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_TABLE_SCHEMA
+        $res = Cache::Retrieve([$this->dbName, $this->tableName, "references"]);
+        if(!$res) {
+            $query = "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_TABLE_SCHEMA
                   FROM information_schema.`KEY_COLUMN_USAGE`
                   WHERE REFERENCED_TABLE_SCHEMA = ?
                   AND REFERENCED_TABLE_NAME = ?";
-        $result = SDB::EscRead($query, array($this->dbName, $this->tableName));
-        foreach($result as $row){
+            $res = SDB::EscRead($query, array($this->dbName, $this->tableName));
+            Cache::Store([$this->dbName, $this->tableName, "references"], $res);
+        }
+        
+        foreach($res as $row){
             $this->createReferenceObject($row);
             foreach ($this->columns as $col) {
                 if($col->NameInDb == $row["REFERENCED_COLUMN_NAME"]) $col->HasReferences = true;
@@ -83,12 +90,16 @@ class aflModel {
     protected function getTableName(){
         $tableName = explode("\\", get_class($this));
         $tableName = $tableName[count($tableName) - 1];
-		$query = "SELECT TABLE_TYPE
+        $res = Cache::Retrieve([CFG_DB_DBNAME, $tableName]);
+        if(!$res) {
+            $query = "SELECT TABLE_TYPE
 				  FROM information_schema.`TABLES`
 				  WHERE table_schema = ?
 				  AND table_name = ?
 				  LIMIT 1";
-		$res = SDB::EscRead($query, array(CFG_DB_DBNAME, Util::CamelToSnakeCase($tableName)));
+            $res = SDB::EscRead($query, array(CFG_DB_DBNAME, Util::CamelToSnakeCase($tableName)));
+            Cache::Store([CFG_DB_DBNAME, $tableName], $res);
+        }
 		if($res && count($res) > 0){
             $this->tableType = $res[0]["TABLE_TYPE"];
             return Util::CamelToSnakeCase($tableName);
@@ -309,7 +320,9 @@ class Column {
     }
 
     private function buildForeignObject($tableName, $tableSchema){
-        $query = "SELECT
+        $res = Cache::Retrieve([$tableName, $tableSchema, $this->NameInDb]);
+        if(!$res) {
+            $query = "SELECT
                 	  REFERENCED_TABLE_NAME,
                 	  REFERENCED_COLUMN_NAME
                   FROM
@@ -319,7 +332,9 @@ class Column {
                   AND TABLE_SCHEMA = ?
                   AND COLUMN_NAME = ?
                   AND REFERENCED_COLUMN_NAME IS NOT NULL";
-        $res = SDB::EscRead($query, array($tableName, $tableSchema, $this->NameInDb));
+            $res = SDB::EscRead($query, array($tableName, $tableSchema, $this->NameInDb));
+            Cache::Store([$tableName, $tableSchema, $this->NameInDb], $res);
+        }
         if(count($res) < 1) return $this->IsForeignKey = false;
         $this->ForeignObject =  aflModel::Create($res[0]["REFERENCED_TABLE_NAME"]);
     }
@@ -350,6 +365,21 @@ class ExternalReference {
         array_push($this->Objects, $tempObj);
         if($dataArray) $tempObj->SetData($dataArray);
         return $tempObj;
+    }
+}
+
+class Cache {
+    private static $store = array();
+
+    public static function Store(Array $params, Array $data) {
+        $key = implode(".", $params);
+        self::$store[$key] = $data;
+    }
+
+    public static function Retrieve($params){
+        $key = implode(".", $params);
+        if(isset(self::$store[$key])) echo "DB Cache Hit on '$key'" . PHP_EOL;
+        return isset(self::$store[$key]) ? self::$store[$key] : false;
     }
 }
 
