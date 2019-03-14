@@ -3,7 +3,10 @@
 class aflModel {
     private $columns, $dbName, $tableName, $tableType, $externalObjects, $bringReferences;
 
+    private static $debugChannel;
+
     function __construct($data, $bringReferences){
+        self::Debug("Initializing object with data: " . json_encode($data));
         $this->bringReferences = $bringReferences;
         $this->tableName = $this->tableName ? $this->tableName : $this->getTableName();
         $this->dbName = CFG_DB_DBNAME;
@@ -42,15 +45,29 @@ class aflModel {
             }
 		}
         trigger_error("aflModel\SetProperty > Unkown property '$name' in object/table '$this->tableName'");
-	}
+    }
+    
+    public static function SetDebugChannel(Callable $callback) {
+        if(!is_callable($callback)) throw "aflModel::SetDebugChannel > Argument is not a function.";
+        self::$debugChannel = $callback;
+    }
+
+    public static function Debug($msg) {
+        if(!self::$debugChannel) return;
+        $msg = date("Y-m-d h:i:s") . " > " . $msg . PHP_EOL;
+        $cb = self::$debugChannel;
+        $cb($msg);
+    }
 
     private function getTableProperties(){
         $this->getTableColumns();
     }
 
     private function getTableColumns(){
+        self::Debug("Getting columns for table '$this->dbName.$this->tableName'.");
         $res = Cache::Retrieve([$this->dbName, $this->tableName, "columns"]);
         if(!$res) {
+            self::Debug("Schema not in cache, querying database.");
             $query = "SELECT COLUMN_NAME, IS_NULLABLE, DATA_TYPE, EXTRA, COLUMN_KEY, TABLE_NAME, TABLE_SCHEMA
                   FROM information_schema.`COLUMNS`
 				  WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
@@ -65,8 +82,10 @@ class aflModel {
     }
 
     protected function getTableReferences(){
+        self::Debug("Retriving references for table '$this->dbName.$this->tableName'");
         $res = Cache::Retrieve([$this->dbName, $this->tableName, "references"]);
         if(!$res) {
+            self::Debug("Schema not in cache, querying database.");
             $query = "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_TABLE_SCHEMA
                   FROM information_schema.`KEY_COLUMN_USAGE`
                   WHERE REFERENCED_TABLE_SCHEMA = ?
@@ -90,8 +109,10 @@ class aflModel {
     protected function getTableName(){
         $tableName = explode("\\", get_class($this));
         $tableName = $tableName[count($tableName) - 1];
+        self::Debug("Getting table properties for '" . CFG_DB_DBNAME . "." . $tableName ."'");
         $res = Cache::Retrieve([CFG_DB_DBNAME, $tableName]);
         if(!$res) {
+            self::Debug("Schema not in cache, querying database.");
             $query = "SELECT TABLE_TYPE
 				  FROM information_schema.`TABLES`
 				  WHERE table_schema = ?
@@ -125,6 +146,7 @@ class aflModel {
     }
 
     public function GetById($id){
+        self::Debug("Fetching '$this->dbName.$this->tableName' by id: '$id'");
         $primaryKeys = $this->getPKarray();
         if(count($primaryKeys) > 1 && (!is_array($id) || count($id) !== count($primaryKeys))){
             return trigger_error("aflModel\GetById > The number of elements provided in parameter on method is not the same as present primary keys on table. " .
@@ -146,6 +168,7 @@ class aflModel {
     }
 
     private function loadFromDb($data){
+        self::Debug("Loading object with data from database.");
         foreach ($this->columns as $column) {
             if(array_key_exists($column->NameInDb, $data)){
                 $column->Value = $data[$column->NameInDb];
@@ -155,6 +178,7 @@ class aflModel {
     }
 
     public function Save(){
+        self::Debug("Saving object to database.");
         if($this->tableType !== "BASE TABLE"){
             trigger_error("aflModel\Save > Table type '$this->tableType' cannot be saved ");
             return false;
@@ -180,6 +204,7 @@ class aflModel {
     }
 
     private function loadFromDataArray($data){
+        self::Debug("Loading '$this->dbName.$this->tableName' object with data from array.");
         if(!Util::IsAssociativeArray($data)) trigger_error("aflModel\Load > Provided array is not an associative array");
         foreach ($data as $key => $value) {
             foreach ($this->columns as $column) {
@@ -211,6 +236,7 @@ class aflModel {
     }
 
     private function insertObject(){
+        self::Debug("Inserting in table '$this->dbName.$this->tableName'");
         $pairArray = $this->getPairArray(true);
         $columnString = implode(", ", array_keys($pairArray));
         $valueString = implode(", ", array_map(function($k){
@@ -236,6 +262,7 @@ class aflModel {
     }
 
     private function updateObject (){
+        self::Debug("Updating in table '$this->dbName.$this->tableName'");
         if(!$this->hasChanges()) return true;
         $setString = implode(", ", array_map(function($column){
             return "$column->NameInDb = :$column->NameInDb";
@@ -291,6 +318,7 @@ class aflModel {
     }
 
     public static function Create($tableName, $data = null, $bringReferences = false){
+        self::Debug("Creating class '$tableName'. Data passed: " . json_encode($data) . ". Bring references: " . ($bringReferences ? "yes." : "no."));
         $tableName = Util::SnakeToCamelCase($tableName);
 		if(!class_exists($tableName))
 			eval("class $tableName extends aflModel {}");
@@ -320,8 +348,10 @@ class Column {
     }
 
     private function buildForeignObject($tableName, $tableSchema){
+        aflModel::Debug("Building foreign object for '$tableSchema.$tableName.$this->NameInDb'.");
         $res = Cache::Retrieve([$tableName, $tableSchema, $this->NameInDb]);
         if(!$res) {
+            aflModel::Debug("Schema not in cache, querying database.");
             $query = "SELECT
                 	  REFERENCED_TABLE_NAME,
                 	  REFERENCED_COLUMN_NAME
@@ -349,6 +379,7 @@ class ExternalReference {
     public $ReferencedTable, $ReferencedColumn, $Objects, $Definition, $ColumnReference, $TableReference;
     
     function __construct($data){
+        aflModel::Debug("Constructing external reference with data: " . json_encode($data));
         $this->Definition = $this->getDefinition($data["TABLE_SCHEMA"], $data["TABLE_NAME"]);
         $this->ReferencedTable = $data["REFERENCED_TABLE_NAME"];
         $this->ReferencedColumn = $data["REFERENCED_COLUMN_NAME"];
@@ -372,13 +403,16 @@ class Cache {
     private static $store = array();
 
     public static function Store(Array $params, Array $data) {
+        aflModel::Debug("Saving to cache array.");
         $key = implode(".", $params);
         self::$store[$key] = $data;
     }
 
     public static function Retrieve($params){
         $key = implode(".", $params);
-        return isset(self::$store[$key]) ? self::$store[$key] : false;
+        $ret = isset(self::$store[$key]) ? self::$store[$key] : false;
+        if($ret) aflModel::Debug("Cache hit!");
+        return  $ret;
     }
 }
 
@@ -603,14 +637,20 @@ class SDB{
 	/** @var \PDO */
 	protected static $con;
 	protected static $initialized = false;
-	public static $LastError;
+    public static $LastError;
+    private static $debugChannel;
 
 	private static function initialize(){
 	    if(self::$initialized) return;
 		self::$con = new PDO(CFG_DB_DRIVER.":host=".CFG_DB_HOST.";dbname=".CFG_DB_DBNAME.";charset=".CFG_DB_CHARSET, CFG_DB_USER, CFG_DB_PASSWORD);
 		self::$con->prepare("SET TEXTSIZE 9145728")->execute();
 		self::$initialized = true;
-	}
+    }
+    
+    public static function SetDebugChannel(Callable $callback) {
+        if(!is_callable($callback)) return;
+        self::$debugChannel = $callback;
+    }
 
 	public static function Read($query,$arrayType = PDO::FETCH_ASSOC){
 	    self::initialize();
@@ -637,19 +677,21 @@ class SDB{
 	 * @param bool $debug
 	 * @return array|bool
 	 */
-	public static function EscRead($query, $data, $arrayType = PDO::FETCH_ASSOC, $debug = false){
+	public static function EscRead(String $query, Array $data, $arrayType = PDO::FETCH_ASSOC){
+        $time = microtime(true);
 		self::initialize();
 		$STH = self::$con->prepare($query);
-		$result = $STH->execute($data);
+        $result = $STH->execute($data);
+        $time = round( (microtime(true) - $time) * 1000 );
 		self::$LastError = $STH->errorInfo();
-		if($debug){
-			print "<pre>";
-			$STH->debugDumpParams();
-			print "</pre>";
-			print "<pre>";
-			var_dump($data);
-			print "</pre>";
-		}
+		if(self::$debugChannel) {
+            $debugCb = self::$debugChannel;
+            $debugCb([
+                "query" => $query,
+                "params" => $data,
+                "time" => $time
+            ]);
+        }
 		if($result){
 			return $STH->fetchAll($arrayType);
 		}else{
@@ -663,22 +705,21 @@ class SDB{
 	 * @param bool $debug
 	 * @return bool
 	 */
-	public static function EscWrite($query,$data, $debug = false){
+	public static function EscWrite(String $query, Array $data){
+        $time = microtime(true);
 		self::initialize();
 		$STH = self::$con->prepare($query);
-		$result = $STH->execute($data);
-		self::$LastError = $STH->errorInfo();
-		if($debug){
-			print "<pre>";
-			$STH->debugDumpParams();
-			print "</pre>";
-			print "<pre>";
-			var_dump($data);
-			print "</pre>";
-			print "<pre>";
-			var_dump($STH->errorInfo());
-			print "</pre>";
-		}
+        $result = $STH->execute($data);
+        self::$LastError = $STH->errorInfo();
+        $time = round( (microtime(true) - $time) * 1000 );
+        if(self::$debugChannel) {
+            $debugCb = self::$debugChannel;
+            $debugCb([
+                "query" => $query,
+                "params" => $data,
+                "time" => $time
+            ]);
+        }
 		if(strpos($query, "INSERT") === 0) return self::$con->lastInsertId();
 		return !!$result;
 	}
